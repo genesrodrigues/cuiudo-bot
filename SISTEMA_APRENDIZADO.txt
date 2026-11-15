@@ -1,0 +1,276 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧠 SISTEMA DE APRENDIZADO DO BASTIÃO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+NOVA FUNCIONALIDADE IMPLEMENTADA:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Bastião agora APRENDE com as conversas!
+✅ Busca informações quando não sabe algo
+✅ Guarda conhecimento para usar depois
+✅ É honesto quando não sabe algo
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMO FUNCIONA:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**1. DETECÇÃO AUTOMÁTICA**
+
+Quando você pergunta algo que ele não sabe, usando:
+- "O que é...?"
+- "Quem é...?"
+- "Como funciona...?"
+- "Quando foi...?"
+- "Onde fica...?"
+- "Você sabe sobre...?"
+
+**Exemplo:**
+```
+Você: @Bastião o que é Semana Farroupilha?
+
+Bastião: Bah guri, deixa eu procurar sobre Semana Farroupilha...
+         Um minutinho!
+         
+         [Busca na web]
+         
+         Bah guri, olha só o que descobri sobre Semana Farroupilha:
+         
+         A Semana Farroupilha é uma celebração que acontece todo 
+         ano no Rio Grande do Sul... [informação encontrada]
+         
+         Agora sei mais uma coisa tchê! Valeu por perguntar!
+```
+
+**2. MEMÓRIA PERSISTENTE**
+
+Tudo que o Bastião aprende é salvo em `memoria_bastiao.json`
+
+**Se você perguntar de novo:**
+```
+Você: @Bastião me fala sobre Semana Farroupilha
+
+Bastião: Bah, sobre Semana Farroupilha eu já sei!
+         
+         [Usa conhecimento armazenado sem buscar de novo]
+         
+         Bah, bom ter isso na memória tchê!
+```
+
+**3. BUSCA INTELIGENTE**
+
+- Busca na web via Hermes
+- Prioriza conteúdo sobre Rio Grande do Sul/gaúcho
+- Resume informação em ~400 caracteres
+- Salva automaticamente o aprendizado
+
+**4. RESPOSTAS HONESTAS**
+
+Quando não encontra informação:
+```
+"Bah guri, procurei sobre [tópico] mas não achei nada de
+ confiável... Me pergunta outra coisa?"
+```
+
+Quando não pode buscar:
+```
+"Bah guri, sobre [tópico] não sei não... E no momento não
+ consigo buscar. Desculpa!"
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXEMPLOS DE USO:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ PERGUNTAS QUE ATIVAM BUSCA:
+
+```
+@Bastião o que é chimarrão?
+@Bastião quem foi Bento Gonçalves?
+@Bastião como funciona um CTG?
+@Bastião quando foi a Revolução Farroupilha?
+@Bastião você sabe sobre Semana Farroupilha?
+@Bastião me explica o que é bomba de chimarrão
+```
+
+✅ CONVERSAS NORMAIS (sem busca):
+
+```
+@Bastião oi, como vai?
+@Bastião me conta uma história
+@Bastião qual sua idade?
+!mate
+!churrasco
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ARQUIVO DE MEMÓRIA:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Localização:** `memoria_bastiao.json`
+
+**Estrutura:**
+```json
+{
+  "aprendizados": [
+    {
+      "topico": "chimarrão",
+      "informacao": "Chimarrão é uma bebida...",
+      "fonte": "web",
+      "data": "2024-11-15T10:30:00"
+    }
+  ],
+  "topicos": {
+    "chimarrão": ["info 1", "info 2"],
+    "churrasco": ["info sobre churrasco"]
+  },
+  "pessoas": {
+    "João": {
+      "primeira_conversa": "2024-11-15",
+      "informacoes": ["gosta de mate", "é do RS"]
+    }
+  }
+}
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+VER APRENDIZADOS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Para ver o que o Bastião já aprendeu:**
+
+```bash
+python ver_aprendizados.py
+```
+
+**Saída:**
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 MEMÓRIA DO BASTIÃO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Total de aprendizados: 5
+Tópicos conhecidos: 3
+Pessoas conhecidas: 2
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ÚLTIMOS 5 APRENDIZADOS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📌 chimarrão
+   Chimarrão é uma bebida tradicional...
+   Fonte: web (2024-11-15)
+
+📌 Semana Farroupilha
+   A Semana Farroupilha é uma celebração...
+   Fonte: web (2024-11-15)
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMANDOS ESPECIAIS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**No código (para desenvolvedores):**
+
+```python
+from hermes_integration import HermesIntegration
+
+# Inicializa
+hermes = HermesIntegration(verbose=True)
+
+# Ver estatísticas
+stats = hermes.estatisticas_aprendizado()
+print(stats)
+
+# Ver memória completa
+memoria = hermes.memoria.memoria
+
+# Limpar memória (CUIDADO!)
+# hermes.memoria.limpar_memoria()
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONFIGURAÇÕES:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Alterar modo verbose (logs detalhados):**
+
+No `config.py`:
+```python
+CUIUDO_VERBOSE=true
+```
+
+Ou no `.env`:
+```
+CUIUDO_VERBOSE=true
+```
+
+**Com verbose ativado, você verá:**
+```
+📚 Memória carregada: 5 aprendizados
+🔍 Não sei sobre 'Semana Farroupilha' - vou buscar!
+✅ Aprendi sobre: Semana Farroupilha
+💡 Já sei sobre: chimarrão
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CARACTERÍSTICAS DO APRENDIZADO:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Mantém últimos 100 aprendizados
+✅ Busca prioriza conteúdo gaúcho/RS
+✅ Respostas limitadas a ~400 caracteres
+✅ Tom de veterano gaúcho de 70 anos
+✅ Memória persistente entre reinicializações
+✅ Aprendizados incluídos no contexto de conversa
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SEGURANÇA:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ O sistema de aprendizado MANTÉM os filtros de segurança!
+
+- NÃO busca sobre temas técnicos/sistema
+- NÃO executa comandos
+- NÃO fornece informações da máquina
+- Bloqueia perguntas sobre programação/código
+
+**Se perguntar algo bloqueado:**
+```
+Você: @Bastião o que é Python?
+
+Bastião: Bah guri, essas coisas de tecnologia não são comigo...
+         Com 70 anos, prefiro falar de chimarrão e churrasco!
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TESTANDO:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. **Rode o bot:**
+   ```bash
+   python cuiudo.py
+   ```
+
+2. **No Discord, teste:**
+   ```
+   @Bastião o que é chimarrão?
+   @Bastião quem foi Getúlio Vargas?
+   @Bastião o que é Semana Farroupilha?
+   ```
+
+3. **Veja aprendizados:**
+   ```bash
+   python ver_aprendizados.py
+   ```
+
+4. **Pergunte de novo (deve usar memória):**
+   ```
+   @Bastião me fala sobre chimarrão
+   ```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Bah tchê, agora o Bastião aprende com vocês! Nunca é tarde
+pra aprender, mesmo com 70 anos! 🧠🧉
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
