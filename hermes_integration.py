@@ -1,352 +1,294 @@
 """
-Integração com Hermes para processamento local de mensagens
-O Bastião usa Hermes para gerar respostas mantendo sua personalidade gaúcha
-Agora com sistema de aprendizado e busca de informações
-+ Gerador de respostas contextuais inteligentes
+Integração do Bastião com o Hermes (LLM local do usuário).
+
+Fluxo:
+  1. Filtro de segurança (assunto técnico -> desconversa, sem chamar o modelo)
+  2. Monta o prompt: personalidade + memória relevante + conversa recente + mensagem
+  3. Chama o Hermes (`hermes chat -q`, sem ferramentas) -> resposta como pessoa
+  4. Se o modelo responder "[BUSCAR: termo]" é porque não sabe: busca na web,
+     guarda na memória e chama o modelo de novo com a informação
+  5. Se o Hermes falhar, cai no gerador de respostas por padrões (fallback)
 """
-import subprocess
-import json
-import tempfile
+import asyncio
 import os
 import random
+import re
+import subprocess
+import tempfile
+
 from personalidade import PersonalidadeGaucha
-from memoria_aprendizado import MemoriaBastiao, SistemaBuscaAprendizado
+from memoria_aprendizado import MemoriaBastiao
 from gerador_respostas import GeradorRespostas
 
+
+MARCADOR_BUSCA = re.compile(r'\[BUSCAR:\s*(.+?)\]', re.IGNORECASE)
+
+INSTRUCAO_BUSCA = """
+QUANDO NÃO SOUBER:
+Se te perguntarem um fato concreto que tu realmente não sabe (uma pessoa, lugar, acontecimento recente,
+termo que nunca ouviu), responde SOMENTE com [BUSCAR: termo a pesquisar] e mais nada.
+Não usa isso pra opinião, conversa, convite ou coisa que tu sabe responder. Na dúvida, responde normal."""
+
+
 class HermesIntegration:
-    """Integra o Bastião com Hermes rodando localmente + Sistema de Aprendizado"""
-    
-    def __init__(self, verbose=False):
+    """Faz o Bastião responder usando o modelo configurado no Hermes."""
+
+    def __init__(self, verbose=False, timeout=90):
         self.verbose = verbose
+        self.timeout = timeout
         self.personalidade = PersonalidadeGaucha()
-        self.historico_conversa = []
-        self.max_historico = 20  # Mantém últimas 20 mensagens
-        
-        # Sistema de memória e aprendizado
         self.memoria = MemoriaBastiao()
-        self.busca = SistemaBuscaAprendizado(self.memoria)
         self.gerador = GeradorRespostas()
-        
+        self.historico_conversa = []
+        self.max_historico = 12
+        self.hermes_ok = True  # vira False se o CLI não existir
+
         if verbose:
             print(f"📚 Memória carregada: {self.memoria.contar_aprendizados()} aprendizados")
-    
+
+    # ------------------------------------------------------------------ API
+    async def processar_mensagem_async(self, mensagem_usuario, usuario=None):
+        """Versão assíncrona: não trava o bot enquanto o modelo pensa."""
+        return await asyncio.to_thread(self.processar_mensagem, mensagem_usuario, usuario)
+
     def processar_mensagem(self, mensagem_usuario, usuario=None):
-        """
-        Processa uma mensagem usando Hermes localmente
-        Agora com capacidade de buscar e aprender
-        
-        Args:
-            mensagem_usuario: Texto da mensagem
-            usuario: Nome do usuário (opcional)
-        
-        Returns:
-            Resposta do Bastião
-        """
-        # Filtro de segurança - verifica se não é pergunta técnica
+        usuario = usuario or 'Alguém'
+
         seguro, resposta_desvio = self.personalidade.filtrar_seguranca(mensagem_usuario)
         if not seguro:
+            self._adicionar_historico(mensagem_usuario, resposta_desvio, usuario)
             return resposta_desvio
-        
-        # Verifica se precisa buscar informação
-        precisa_buscar, topico, razao = self.busca.precisa_buscar(mensagem_usuario)
-        
-        if precisa_buscar and topico:
-            # Primeiro verifica se já sabe sobre o tópico
-            conhecimento_existente = self.memoria.buscar_conhecimento(topico)
-            
-            if conhecimento_existente:
-                # Já sabe! Usa o conhecimento armazenado
-                if self.verbose:
-                    print(f"💡 Já sei sobre: {topico}")
-                
-                resposta = self._responder_com_conhecimento(topico, conhecimento_existente)
-            else:
-                # Não sabe - vai buscar!
-                if self.verbose:
-                    print(f"🔍 Não sei sobre '{topico}' - vou buscar!")
-                
-                resposta = self._buscar_e_aprender(topico, usuario)
-        else:
-            # Conversa normal - usa gerador de respostas contextuais
-            if self.verbose:
-                print(f"💬 Gerando resposta contextual...")
-            
-            # Primeiro tenta gerador contextual
-            resposta, confianca = self.gerador.gerar_resposta(mensagem_usuario, usuario)
-            
-            if confianca >= 0.5:
-                # Resposta contextual com boa confiança
-                if self.verbose:
-                    print(f"✅ Resposta contextual (confiança: {confianca})")
-            else:
-                # Baixa confiança - tenta Hermes como fallback
-                if self.verbose:
-                    print(f"⚠️ Baixa confiança ({confianca}), tentando Hermes...")
-                
-                contexto = self._montar_contexto(mensagem_usuario, usuario)
-                
-                try:
-                    resposta_hermes = self._chamar_hermes(contexto)
-                    
-                    # Se Hermes funcionou, usa a resposta dele
-                    if resposta_hermes and not self._e_resposta_fallback(resposta_hermes):
-                        resposta = self.personalidade.adicionar_sotaque_gaucho(resposta_hermes)
-                        if self.verbose:
-                            print("✅ Usou resposta do Hermes")
-                    # Senão, mantém a resposta contextual
-                    elif self.verbose:
-                        print("ℹ️ Hermes retornou fallback, usando resposta contextual")
-                    
-                except Exception as e:
+
+        resposta = None
+        if self.hermes_ok:
+            contexto = self._montar_contexto(mensagem_usuario, usuario)
+            resposta = self._chamar_hermes(contexto)
+
+            # O modelo disse que não sabe -> busca, aprende, responde de novo
+            if resposta:
+                m = MARCADOR_BUSCA.search(resposta)
+                if m:
+                    termo = m.group(1).strip()
                     if self.verbose:
-                        print(f"⚠️ Hermes falhou, usando resposta contextual: {e}")
-        
-        # Adiciona ao histórico
+                        print(f"🔍 Bastião não sabe '{termo}', buscando...")
+                    info = self._buscar_na_web(termo)
+                    if info:
+                        self.memoria.adicionar_aprendizado(termo, info, fonte='web')
+                    contexto = self._montar_contexto(
+                        mensagem_usuario, usuario,
+                        info_nova=(termo, info) if info else (termo, None)
+                    )
+                    resposta = self._chamar_hermes(contexto)
+                    resposta = MARCADOR_BUSCA.sub('', resposta or '').strip() or None
+
+        if not resposta:
+            if self.verbose:
+                print("⚠️ Hermes indisponível, usando gerador de padrões")
+            resposta, _ = self.gerador.gerar_resposta(mensagem_usuario, usuario)
+
         self._adicionar_historico(mensagem_usuario, resposta, usuario)
-        
         return resposta
-    
-    def _buscar_e_aprender(self, topico, usuario=None):
-        """Busca informação na web e aprende"""
-        respostas_procurando = [
-            f"Bah guri, deixa eu procurar sobre {topico}... Um minutinho!",
-            f"Opa, {topico}? Nunca é tarde pra aprender! Deixa eu buscar...",
-            f"Barbaridade, não sei sobre {topico}! Mas vou descobrir já!",
-            f"Bah, {topico}... Com 70 anos ainda tem coisa que não sei! Vou buscar..."
-        ]
-        
-        if self.verbose:
-            print(random.choice(respostas_procurando))
-        
-        # Tenta buscar via hermes_tools
+
+    # ------------------------------------------------------------ contexto
+    def _montar_contexto(self, mensagem, usuario, info_nova=None):
+        partes = [self.personalidade.SYSTEM_PROMPT, INSTRUCAO_BUSCA]
+
+        lembrancas = self._memoria_relevante(mensagem)
+        if lembrancas:
+            partes.append("\nCOISAS QUE TU APRENDEU CONVERSANDO COM O PESSOAL (usa se vier ao caso):\n" + lembrancas)
+
+        if info_nova:
+            termo, info = info_nova
+            if info:
+                partes.append(
+                    f"\nTu acabou de perguntar pro Pedrinho / dar uma olhada e descobriu isto sobre \"{termo}\":\n{info}\n"
+                    "Responde a pergunta com essa informação, do teu jeito, em poucas frases, "
+                    "como quem acabou de ficar sabendo. Não usa [BUSCAR] de novo."
+                )
+            else:
+                partes.append(
+                    f"\nTu tentou descobrir sobre \"{termo}\" mas não achou nada. "
+                    "Diz com naturalidade que não sabe e puxa outro assunto. Não usa [BUSCAR] de novo."
+                )
+
+        if self.historico_conversa:
+            partes.append("\nCONVERSA RECENTE NO GRUPO:")
+            for msg in self.historico_conversa[-8:]:
+                partes.append(f"{msg['usuario']}: {msg['mensagem']}")
+                partes.append(f"Bastião: {msg['resposta']}")
+
+        partes.append(f"\nAGORA {usuario} te mandou:\n{mensagem}\n\nBastião responde:")
+        return "\n".join(partes)
+
+    def _memoria_relevante(self, mensagem):
+        palavras = {p for p in re.findall(r'\w{4,}', mensagem.lower())}
+        achados = []
+        for topico, infos in self.memoria.memoria.get('topicos', {}).items():
+            t = topico.lower()
+            if any(p in t or t in p for p in palavras):
+                achados.append(f"- {topico}: {infos[-1][:300]}")
+            if len(achados) >= 3:
+                break
+        return "\n".join(achados)
+
+    # --------------------------------------------------------------- hermes
+    def _chamar_hermes(self, contexto):
+        """Roda `hermes chat` sem ferramentas e devolve só a fala do Bastião."""
+        tmpdir = os.environ.get('TMPDIR') or tempfile.gettempdir()
         try:
-            from hermes_tools import web_search, web_extract
-            
-            # Monta query de busca
-            query = topico
-            if any(palavra in topico.lower() for palavra in ['gaúcho', 'mate', 'churrasco', 'rs', 'sul', 'tradição']):
-                query = f"{topico} rio grande do sul gaúcho tradição"
-            
-            # Busca
-            resultado_busca = web_search(query, limit=3)
-            
-            if resultado_busca and 'data' in resultado_busca and 'web' in resultado_busca['data']:
-                urls = [r['url'] for r in resultado_busca['data']['web'][:2]]
-                conteudo = web_extract(urls, char_limit=3000)
-                
-                if conteudo and 'results' in conteudo:
-                    for item in conteudo['results']:
-                        if item.get('content') and not item.get('error'):
-                            info = item['content'][:600].strip()
-                            
-                            # Aprende!
-                            self.memoria.adicionar_aprendizado(topico, info, fonte='web')
-                            
-                            if self.verbose:
-                                print(f"✅ Aprendi sobre: {topico}")
-                            
-                            # Formata resposta de veterano
-                            return self._formatar_aprendizado_gaucho(topico, info)
-            
-            # Se não encontrou nada útil
-            return self._resposta_nao_encontrou(topico)
-            
-        except ImportError:
-            # hermes_tools não disponível - resposta honesta
-            return self._resposta_sem_busca(topico)
+            with tempfile.NamedTemporaryFile('w', suffix='.txt', dir=tmpdir, delete=False, encoding='utf-8') as f:
+                f.write(contexto)
+                caminho = f.name
         except Exception as e:
             if self.verbose:
-                print(f"Erro na busca: {e}")
-            return self._resposta_erro_busca(topico)
-    
-    def _responder_com_conhecimento(self, topico, conhecimento):
-        """Responde usando conhecimento já armazenado"""
-        prefixos = [
-            f"Bah, sobre {topico} eu já sei!",
-            f"Opa, {topico}! Deixa eu ver aqui na memória...",
-            f"Bah, {topico}... Já aprendi sobre isso!",
-            f"Sobre {topico}, guri, olha só:"
-        ]
-        
-        # Pega a informação mais recente
-        info = conhecimento[-1] if isinstance(conhecimento, list) else conhecimento
-        
-        # Limita tamanho
-        if len(info) > 400:
-            info = info[:400] + "..."
-        
-        return f"{random.choice(prefixos)}\n\n{info}\n\nBah, bom ter isso na memória tchê!"
-    
-    def _formatar_aprendizado_gaucho(self, topico, informacao):
-        """Formata a informação aprendida com tom de gaúcho de 70 anos"""
-        prefixos = [
-            f"Bah guri, olha só o que descobri sobre {topico}:",
-            f"Opa! Aprendi sobre {topico} agora:",
-            f"Barbaridade, que interessante esse {topico}!",
-            f"Bah, nunca é tarde pra aprender! Sobre {topico}:"
-        ]
-        
-        sufixos = [
-            "\n\nAgora sei mais uma coisa tchê! Valeu por perguntar!",
-            "\n\nBah, aprendi algo novo com meus 70 anos!",
-            "\n\nGuardei isso na memória, guri!",
-            "\n\nTri bom aprender coisas novas!"
-        ]
-        
-        # Limita tamanho
-        if len(informacao) > 400:
-            informacao = informacao[:400] + "..."
-        
-        return f"{random.choice(prefixos)}\n\n{informacao}{random.choice(sufixos)}"
-    
-    def _resposta_nao_encontrou(self, topico):
-        """Resposta quando não encontrou informação"""
-        respostas = [
-            f"Bah guri, procurei sobre {topico} mas não achei nada de confiável...",
-            f"Opa, tentei buscar sobre {topico} mas não consegui informação boa tchê.",
-            f"Barbaridade, não achei nada claro sobre {topico}... Desculpa guri!",
-            f"Bah, sobre {topico} não encontrei informação que preste... Me pergunta outra coisa?"
-        ]
-        return random.choice(respostas)
-    
-    def _resposta_sem_busca(self, topico):
-        """Resposta quando não pode buscar"""
-        respostas = [
-            f"Bah guri, sobre {topico} não sei não... E no momento não consigo buscar.",
-            f"Opa, {topico}... Não sei tchê, e não tô podendo procurar agora.",
-            f"Barbaridade, sobre {topico} não sei... Desculpa guri!"
-        ]
-        return random.choice(respostas)
-    
-    def _resposta_erro_busca(self, topico):
-        """Resposta quando deu erro na busca"""
-        respostas = [
-            f"Bah, tentei buscar sobre {topico} mas deu problema tchê...",
-            f"Opa, queria saber sobre {topico} mas deu erro aqui... Desculpa guri!",
-            f"Barbaridade, tentei procurar {topico} mas não deu certo..."
-        ]
-        return random.choice(respostas)
-    
-    def _montar_contexto(self, mensagem, usuario=None):
-        """Monta o contexto da conversa para o Hermes"""
-        # Monta histórico de conversa
-        historico_texto = ""
-        if self.historico_conversa:
-            historico_texto = "\n\nCONVERSA RECENTE:\n"
-            for msg in self.historico_conversa[-5:]:  # Últimas 5 mensagens
-                historico_texto += f"{msg['usuario']}: {msg['mensagem']}\n"
-                historico_texto += f"Bastião: {msg['resposta']}\n"
-        
-        # Adiciona aprendizados recentes ao contexto
-        aprendizados_texto = ""
-        ultimos = self.memoria.ultimos_aprendizados(3)
-        if ultimos:
-            aprendizados_texto = "\n\nAPRENDIZADOS RECENTES:\n"
-            for apr in ultimos:
-                aprendizados_texto += f"- {apr['topico']}: {apr['informacao'][:100]}...\n"
-        
-        # Contexto completo
-        usuario_info = f" (usuário: {usuario})" if usuario else ""
-        contexto = f"""{self.personalidade.SYSTEM_PROMPT}
+                print(f"Erro criando arquivo de prompt: {e}")
+            return None
 
-{historico_texto}{aprendizados_texto}
-
-MENSAGEM ATUAL{usuario_info}:
-{mensagem}
-
-Responda como o Bastião, mantendo sua personalidade de gaúcho veterano de 70 anos."""
-        
-        return contexto
-    
-    def _chamar_hermes(self, contexto):
-        """Chama o Hermes CLI para processar a mensagem (fallback)"""
         try:
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding='utf-8') as f:
-                f.write(contexto)
-                temp_file = f.name
-            
-            try:
-                result = subprocess.run(
-                    ['hermes', '--prompt', contexto, '--max-tokens', '200'],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    encoding='utf-8'
-                )
-                
-                if result.returncode == 0:
-                    resposta = result.stdout.strip()
-                    resposta = resposta.replace('Assistant:', '').replace('Bastião:', '').strip()
-                    return resposta if resposta else self._resposta_fallback()
-                else:
-                    return self._resposta_fallback()
-                    
-            finally:
-                if os.path.exists(temp_file):
-                    os.unlink(temp_file)
-                    
+            result = subprocess.run(
+                ['hermes', 'chat', '--query-file', caminho, '-Q',
+                 '-t', '', '--reasoning', 'none', '--max-turns', '1'],
+                capture_output=True, text=True, encoding='utf-8', errors='replace',
+                timeout=self.timeout, shell=(os.name == 'nt')
+            )
+        except FileNotFoundError:
+            self.hermes_ok = False
+            if self.verbose:
+                print("❌ comando 'hermes' não encontrado no PATH")
+            return None
+        except subprocess.TimeoutExpired:
+            if self.verbose:
+                print("⏱️ Hermes demorou demais")
+            return None
         except Exception as e:
             if self.verbose:
                 print(f"Erro ao chamar Hermes: {e}")
-            return self._resposta_fallback()
-    
-    def _e_resposta_fallback(self, resposta):
-        """Verifica se a resposta é um fallback genérico"""
-        fallbacks = [
-            'me perdi no pensamento',
-            'viajei tchê',
-            'pensando em outra coisa',
-            'memória falha',
-            'não entendi direito',
-            'meio aéreo'
-        ]
-        resposta_lower = resposta.lower()
-        return any(fb in resposta_lower for fb in fallbacks)
-    
-    def _resposta_fallback(self):
-        """Retorna uma resposta genérica quando falha"""
-        respostas = [
-            "Bah guri, me perdi no pensamento aqui... Me fala de novo?",
-            "Opa, viajei tchê! Pode repetir?",
-            "Barbaridade, tava pensando em outra coisa! O que tu disse?",
-            "Bah, com 70 anos às vezes a memória falha... Como é que é?",
-            "Capaz, não entendi direito tchê! Explica de novo?",
-            "Bah, tô meio aéreo hoje! Repete aí?"
-        ]
-        return random.choice(respostas)
-    
+            return None
+        finally:
+            try:
+                os.unlink(caminho)
+            except OSError:
+                pass
+
+        if result.returncode != 0:
+            if self.verbose:
+                print(f"Hermes retornou erro: {result.stderr[-500:]}")
+            return None
+
+        return self._limpar_resposta(result.stdout)
+
+    @staticmethod
+    def _limpar_resposta(texto):
+        linhas = []
+        for linha in texto.splitlines():
+            if linha.strip().lower().startswith('session_id:'):
+                continue
+            linhas.append(linha)
+        resposta = "\n".join(linhas).strip()
+        resposta = re.sub(r'^(Bastião|Assistant)\s*:\s*', '', resposta, flags=re.IGNORECASE).strip()
+        if len(resposta) >= 2 and resposta[0] == resposta[-1] == '"':
+            resposta = resposta[1:-1].strip()
+        # Discord limita a 2000 caracteres
+        return resposta[:1900] if resposta else None
+
+    # ----------------------------------------------------------------- busca
+    def _buscar_na_web(self, termo):
+        """Tenta hermes_tools; senão Wikipédia (pt) e DuckDuckGo via urllib. Devolve texto curto ou None."""
+        texto = self._buscar_hermes_tools(termo)
+        if not texto:
+            texto = self._buscar_wikipedia(termo)
+        if not texto:
+            texto = self._buscar_duckduckgo(termo)
+        if self.verbose:
+            print("✅ achei algo" if texto else "❌ não achei nada")
+        return texto
+
+    def _buscar_hermes_tools(self, termo):
+        try:
+            from hermes_tools import web_search, web_extract
+        except ImportError:
+            return None
+        try:
+            res = web_search(termo, limit=3)
+            itens = (res or {}).get('data', {}).get('web', [])
+            trechos = [f"{i.get('title','')}: {i.get('description','')}" for i in itens if i.get('description')]
+            urls = [i['url'] for i in itens[:2] if i.get('url')]
+            if urls:
+                ext = web_extract(urls, char_limit=2500)
+                for r in (ext or {}).get('results', []):
+                    if r.get('content') and not r.get('error'):
+                        trechos.append(r['content'][:800])
+                        break
+            texto = "\n".join(trechos).strip()
+            return texto[:1200] if texto else None
+        except Exception as e:
+            if self.verbose:
+                print(f"Erro na busca (hermes_tools): {e}")
+            return None
+
+    @staticmethod
+    def _http_get(url, timeout=15):
+        import urllib.request
+        req = urllib.request.Request(url, headers={'User-Agent': 'BastiaoBot/1.0 (discord bot; contato local)'})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read().decode('utf-8', errors='replace')
+
+    def _buscar_wikipedia(self, termo):
+        import json
+        import urllib.parse
+        for lang in ('pt', 'en'):
+            try:
+                q = urllib.parse.urlencode({'action': 'query', 'list': 'search', 'srsearch': termo,
+                                            'format': 'json', 'srlimit': 1, 'utf8': 1})
+                data = json.loads(self._http_get(f"https://{lang}.wikipedia.org/w/api.php?{q}"))
+                hits = data.get('query', {}).get('search', [])
+                if not hits:
+                    continue
+                titulo = hits[0]['title']
+                resumo = json.loads(self._http_get(
+                    f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(titulo)}"))
+                extrato = (resumo.get('extract') or '').strip()
+                if extrato:
+                    return f"{titulo} (Wikipédia): {extrato}"[:1200]
+            except Exception as e:
+                if self.verbose:
+                    print(f"Erro na busca (wikipedia {lang}): {e}")
+        return None
+
+    def _buscar_duckduckgo(self, termo):
+        import html
+        import urllib.parse
+        try:
+            pagina = self._http_get("https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({'q': termo}))
+            trechos = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', pagina, flags=re.S)
+            limpos = []
+            for t in trechos[:4]:
+                t = html.unescape(re.sub(r'<[^>]+>', '', t)).strip()
+                if t:
+                    limpos.append(t)
+            texto = "\n".join(limpos)
+            return texto[:1200] if texto else None
+        except Exception as e:
+            if self.verbose:
+                print(f"Erro na busca (duckduckgo): {e}")
+            return None
+
+    # ------------------------------------------------------------- histórico
     def _adicionar_historico(self, mensagem, resposta, usuario):
-        """Adiciona interação ao histórico"""
-        self.historico_conversa.append({
-            'usuario': usuario or 'Alguém',
-            'mensagem': mensagem,
-            'resposta': resposta
-        })
-        
-        if len(self.historico_conversa) > self.max_historico:
-            self.historico_conversa = self.historico_conversa[-self.max_historico:]
-    
+        self.historico_conversa.append({'usuario': usuario, 'mensagem': mensagem, 'resposta': resposta})
+        self.historico_conversa = self.historico_conversa[-self.max_historico:]
+
     def limpar_historico(self):
-        """Limpa o histórico de conversas"""
         self.historico_conversa = []
-    
+
     def estatisticas_aprendizado(self):
-        """Retorna estatísticas de aprendizado"""
         return {
             'total_aprendizados': self.memoria.contar_aprendizados(),
-            'topicos': len(self.memoria.memoria['topicos']),
-            'pessoas': len(self.memoria.memoria['pessoas']),
-            'ultimos_3': self.memoria.ultimos_aprendizados(3)
+            'topicos': len(self.memoria.memoria.get('topicos', {})),
+            'pessoas': len(self.memoria.memoria.get('pessoas', {})),
         }
 
 
-# Versão alternativa mantida para compatibilidade
-class HermesDirectIntegration:
-    """Integração direta com Hermes via import (fallback para CLI)"""
-    
-    def __init__(self, verbose=False):
-        self.cli_integration = HermesIntegration(verbose=verbose)
-    
-    def processar_mensagem(self, mensagem, usuario=None):
-        """Processa mensagem usando o método disponível"""
-        return self.cli_integration.processar_mensagem(mensagem, usuario)
+# Compatibilidade
+class HermesDirectIntegration(HermesIntegration):
+    pass

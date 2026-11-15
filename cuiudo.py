@@ -127,7 +127,7 @@ class Cuiudo(commands.Bot):
             
             # Processa com Hermes
             nome_usuario = message.author.display_name
-            resposta = self.hermes.processar_mensagem(conteudo, usuario=nome_usuario)
+            resposta = await self.hermes.processar_mensagem_async(conteudo, usuario=nome_usuario)
             
             # Envia resposta
             await message.reply(resposta, mention_author=False)
