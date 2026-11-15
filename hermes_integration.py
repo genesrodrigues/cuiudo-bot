@@ -2,6 +2,7 @@
 Integração com Hermes para processamento local de mensagens
 O Bastião usa Hermes para gerar respostas mantendo sua personalidade gaúcha
 Agora com sistema de aprendizado e busca de informações
++ Gerador de respostas contextuais inteligentes
 """
 import subprocess
 import json
@@ -10,6 +11,7 @@ import os
 import random
 from personalidade import PersonalidadeGaucha
 from memoria_aprendizado import MemoriaBastiao, SistemaBuscaAprendizado
+from gerador_respostas import GeradorRespostas
 
 class HermesIntegration:
     """Integra o Bastião com Hermes rodando localmente + Sistema de Aprendizado"""
@@ -23,6 +25,7 @@ class HermesIntegration:
         # Sistema de memória e aprendizado
         self.memoria = MemoriaBastiao()
         self.busca = SistemaBuscaAprendizado(self.memoria)
+        self.gerador = GeradorRespostas()
         
         if verbose:
             print(f"📚 Memória carregada: {self.memoria.contar_aprendizados()} aprendizados")
@@ -64,20 +67,39 @@ class HermesIntegration:
                 
                 resposta = self._buscar_e_aprender(topico, usuario)
         else:
-            # Conversa normal
-            contexto = self._montar_contexto(mensagem_usuario, usuario)
+            # Conversa normal - usa gerador de respostas contextuais
+            if self.verbose:
+                print(f"💬 Gerando resposta contextual...")
             
-            try:
-                # Chama Hermes via CLI (fallback)
-                resposta = self._chamar_hermes(contexto)
-                
-                # Garante sotaque gaúcho
-                resposta = self.personalidade.adicionar_sotaque_gaucho(resposta)
-                
-            except Exception as e:
+            # Primeiro tenta gerador contextual
+            resposta, confianca = self.gerador.gerar_resposta(mensagem_usuario, usuario)
+            
+            if confianca >= 0.5:
+                # Resposta contextual com boa confiança
                 if self.verbose:
-                    print(f"Erro ao chamar Hermes: {e}")
-                resposta = self._resposta_fallback()
+                    print(f"✅ Resposta contextual (confiança: {confianca})")
+            else:
+                # Baixa confiança - tenta Hermes como fallback
+                if self.verbose:
+                    print(f"⚠️ Baixa confiança ({confianca}), tentando Hermes...")
+                
+                contexto = self._montar_contexto(mensagem_usuario, usuario)
+                
+                try:
+                    resposta_hermes = self._chamar_hermes(contexto)
+                    
+                    # Se Hermes funcionou, usa a resposta dele
+                    if resposta_hermes and not self._e_resposta_fallback(resposta_hermes):
+                        resposta = self.personalidade.adicionar_sotaque_gaucho(resposta_hermes)
+                        if self.verbose:
+                            print("✅ Usou resposta do Hermes")
+                    # Senão, mantém a resposta contextual
+                    elif self.verbose:
+                        print("ℹ️ Hermes retornou fallback, usando resposta contextual")
+                    
+                except Exception as e:
+                    if self.verbose:
+                        print(f"⚠️ Hermes falhou, usando resposta contextual: {e}")
         
         # Adiciona ao histórico
         self._adicionar_historico(mensagem_usuario, resposta, usuario)
@@ -267,6 +289,19 @@ Responda como o Bastião, mantendo sua personalidade de gaúcho veterano de 70 a
             if self.verbose:
                 print(f"Erro ao chamar Hermes: {e}")
             return self._resposta_fallback()
+    
+    def _e_resposta_fallback(self, resposta):
+        """Verifica se a resposta é um fallback genérico"""
+        fallbacks = [
+            'me perdi no pensamento',
+            'viajei tchê',
+            'pensando em outra coisa',
+            'memória falha',
+            'não entendi direito',
+            'meio aéreo'
+        ]
+        resposta_lower = resposta.lower()
+        return any(fb in resposta_lower for fb in fallbacks)
     
     def _resposta_fallback(self):
         """Retorna uma resposta genérica quando falha"""
