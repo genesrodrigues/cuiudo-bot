@@ -1,0 +1,110 @@
+╔═══════════════════════════════════════════════════════════════╗
+║                   ATENÇÃO - CREDENCIAIS DIFERENTES              ║
+╚═══════════════════════════════════════════════════════════════╝
+
+Você está vendo isto no Discord Developer Portal:
+
+┌─────────────────────────────────────────────────────────────┐
+│ PÁGINA "GENERAL INFORMATION" (Informações Gerais)            │
+├─────────────────────────────────────────────────────────────┤
+│ Application ID: 1571489070952095744        ← Você vê isso   │
+│ Public Key: 714b42ca5fa6ad58...            ← Você vê isso   │
+│ Client Secret: FZBNZESQMxkl85vhMqfsivZEXV  ← Você vê isso   │
+└─────────────────────────────────────────────────────────────┘
+
+❌ ISSO NÃO É O QUE VOCÊ PRECISA!
+
+O que você precisa está em OUTRA PÁGINA:
+
+┌─────────────────────────────────────────────────────────────┐
+│ PÁGINA "BOT" (no menu lateral)                               │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│ 🤖 BOT                                                        │
+│                                                               │
+│ ┌──────────────────────────────────────────────────────┐    │
+│ │ TOKEN                                                 │    │
+│ │                                                       │    │
+│ │ MTU3MTQ4OTA3MDk1MjA5NTc0NA.GxYzAB.dQw4w9W...        │    │
+│ │                                                       │    │
+│ │ [Reset Token]  [Copy]                                │    │
+│ └──────────────────────────────────────────────────────┘    │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+
+✅ ESTE É O TOKEN QUE VOCÊ PRECISA!
+
+═══════════════════════════════════════════════════════════════
+PASSO A PASSO VISUAL
+═══════════════════════════════════════════════════════════════
+
+1. Vá para: https://discord.com/developers/applications
+
+2. Clique na aplicação "Cuiudo" (ou o nome que você deu)
+
+3. NO MENU LATERAL ESQUERDO, você vai ver:
+   
+   ┌─────────────────┐
+   │ General Info    │ ← Você está AQUI (página errada!)
+   │ Bot             │ ← Precisa ir AQUI!
+   │ OAuth2          │
+   │ URL Generator   │
+   └─────────────────┘
+
+4. CLIQUE EM "Bot"
+
+5. Role até a seção "TOKEN"
+
+6. Clique em "Reset Token" (se for primeira vez)
+   OU clique em "Copy" (se já gerou antes)
+
+7. COPIE o token que aparecer
+   (Ele é LONGO, tipo: MTU3MTQ4OTA3MDk1MjA5NTc0NA.GxYzAB....)
+
+8. COLE no arquivo .env:
+   
+   DISCORD_TOKEN=MTU3MTQ4OTA3MDk1MjA5NTc0NA.GxYzAB....
+
+═══════════════════════════════════════════════════════════════
+COMPARAÇÃO
+═══════════════════════════════════════════════════════════════
+
+❌ Client Secret (OAuth2):
+   - Página: "General Information"
+   - Exemplo: FZBNZESQMxkl85vhMqfsivZEXVjr5i3C
+   - Tamanho: ~32 caracteres
+   - Serve para: Login com Discord em sites
+
+✅ Bot Token:
+   - Página: "Bot"
+   - Exemplo: MTU3MTQ4OTA3MDk1MjA5NTc0NA.GxYzAB.dQw4w9W...
+   - Tamanho: ~70+ caracteres
+   - Serve para: Autenticar o bot Discord
+   - TEM DOIS PONTOS no meio
+
+═══════════════════════════════════════════════════════════════
+LINK DIRETO
+═══════════════════════════════════════════════════════════════
+
+Clique aqui (já vai direto para a página Bot):
+
+https://discord.com/developers/applications/1571489070952095744/bot
+                                           ↑
+                                    Sua Application ID
+
+═══════════════════════════════════════════════════════════════
+IMPORTANTE - ATIVAR INTENTS
+═══════════════════════════════════════════════════════════════
+
+Quando estiver na página "Bot", role até o final e ative:
+
+Privileged Gateway Intents:
+  ☑️ PRESENCE INTENT
+  ☑️ SERVER MEMBERS INTENT
+  ☑️ MESSAGE CONTENT INTENT  ← SEM ISSO O BOT NÃO FUNCIONA!
+
+Clique "Save Changes"
+
+═══════════════════════════════════════════════════════════════
+
+Depois que copiar o TOKEN CORRETO, cole aqui ou no arquivo .env!
