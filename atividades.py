@@ -1,65 +1,65 @@
 """
-Atividades rotativas do Cuiudo
-Simulam a vida diária de um colono gaúcho
+Atividades rotativas do Bastião
+Simulam a vida diária de um gaúcho de 70 anos
 """
 import random
 from datetime import datetime
 
 class AtividadesGauchas:
-    """Sistema de atividades que simulam a rotina de um gaúcho"""
+    """Sistema de atividades que simulam a rotina de um gaúcho veterano (70 anos)"""
     
-    # Atividades por período do dia
+    # Atividades por período do dia (senhor de 70 anos)
     ATIVIDADES = {
         'manha': [
-            '☀️ Cevando um mate',
-            '🌄 Cuidando da criação',
-            '🐴 Na lida campeira',
+            '☀️ Cevando mate no galpão',
+            '🌄 Olhando a criação',
             '☕ Tomando café colonial',
-            '🌾 Olhando a lavoura',
-            '🧉 Preparando o mate',
-            '🐔 Cuidando das galinhas'
+            '🧉 Preparando o chimarrão',
+            '🪑 Descansando na varanda',
+            '📻 Ouvindo rádio',
+            '🌤️ Apreciando a manhã'
         ],
         'tarde': [
             '🧉 Cevando uns mates',
-            '🥩 Pensando no churrasco',
-            '🎵 Ouvindo música gauchesca',
+            '🥩 Lembrando dos churrascos antigos',
+            '🎵 Ouvindo música gauchesca das antigas',
             '📻 Escutando o rádio',
             '🌳 Descansando no galpão',
-            '🐴 Domando um bagual',
-            '🔥 Preparando a lenha'
+            '🪑 Prosando na sombra',
+            '📖 Lendo o jornal'
         ],
         'noite': [
-            '🌙 Cevando um mate',
+            '🌙 Cevando mate na varanda',
             '🔥 Ao redor do fogo',
-            '🎸 Tocando violão',
-            '🍖 Fazendo um assado',
+            '🎸 Ouvindo música das antigas',
+            '📖 Contando causos',
             '🌟 Olhando as estrelas',
-            '🎵 Cantando uma trova',
-            '💬 Contando causos'
+            '💬 Prosando com a família',
+            '🪑 Descansando após o jantar'
         ],
         'madrugada': [
-            '😴 Dormindo no galpão',
+            '😴 Dormindo',
             '🌙 Descansando',
-            '💤 Sonhando com churrasco',
-            '🛌 Na cama',
-            '🦉 Noite tranquila'
+            '💤 Sonhando com os bons tempos',
+            '🛌 Noite tranquila',
+            '🦉 Sono profundo'
         ]
     }
     
-    # Atividades especiais (ocasionais)
+    # Atividades especiais (ocasionais - senhor de 70 anos)
     ATIVIDADES_ESPECIAIS = [
-        '🎉 Preparando um fandango',
-        '🏇 Nos Jogos Campeiros',
-        '🎪 Na Semana Farroupilha',
-        '🥩 Carneando para o churrasco',
-        '🌾 Colhendo bergamota',
-        '🐴 Treinando crioulo',
-        '🎯 Jogando tava',
-        '🎸 Ensaiando com os gaudérios',
-        '⚽ Jogando bocha',
-        '🧉 No rodeio de mate',
-        '📖 Lendo o Martim Fierro',
-        '🎭 Nos Festejos Farroupilhas'
+        '📖 Relembrando histórias antigas',
+        '🎪 Lembrando das Semanas Farroupilhas',
+        '🥩 Orientando no churrasco',
+        '🌾 Olhando a lavoura crescer',
+        '🎸 Ouvindo música tradicionalista',
+        '📻 No rodeio de mate',
+        '🧉 Ensinando a cevar mate',
+        '💬 Contando causos do passado',
+        '🪑 Descansando na varanda',
+        '🌤️ Apreciando o dia',
+        '🤠 Lembrando dos tempos de peão',
+        '📜 Recordando as tradições'
     ]
     
     @staticmethod
@@ -93,17 +93,16 @@ class AtividadesGauchas:
     def pegar_status_personalizado():
         """
         Retorna uma mensagem de status personalizada
-        Combinação de atividade com frase gaúcha
+        Combinação de atividade com frase gaúcha (senhor de 70 anos)
         """
         frases = [
-            'Vida boa tchê!',
-            'Bah, que dia!',
-            'Tri legal!',
-            'Barbaridade!',
-            'Na paz tchê',
-            'Vida campeira',
-            'É nóis!',
-            'Firme e forte!'
+            'Bons tempos',
+            'Vida calma',
+            '70 anos de história',
+            'Sempre firme',
+            'Veterano gaúcho',
+            'Memórias boas',
+            'Tradição viva'
         ]
         
         # 20% de chance de adicionar uma frase
