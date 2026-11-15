@@ -1,0 +1,86 @@
+╔═══════════════════════════════════════════════════════════════╗
+║            ⚠️  ERRO: PRIVILEGED INTENTS NÃO ATIVADOS           ║
+╚═══════════════════════════════════════════════════════════════╝
+
+O BOT TENTOU CONECTAR mas o Discord bloqueou porque você precisa
+ATIVAR os "Privileged Gateway Intents" no Developer Portal.
+
+═══════════════════════════════════════════════════════════════
+SOLUÇÃO RÁPIDA (5 passos)
+═══════════════════════════════════════════════════════════════
+
+1. ABRA ESTE LINK:
+   https://discord.com/developers/applications/1571489070952095744/bot
+
+2. ROLE A PÁGINA ATÉ ENCONTRAR:
+   "Privileged Gateway Intents"
+
+3. ATIVE OS 3 TOGGLES (switches):
+   
+   ┌────────────────────────────────────────────────────┐
+   │ Privileged Gateway Intents                         │
+   ├────────────────────────────────────────────────────┤
+   │                                                     │
+   │ PRESENCE INTENT                 ☑️ ON              │
+   │ Your bot can see when users are online...          │
+   │                                                     │
+   │ SERVER MEMBERS INTENT           ☑️ ON              │
+   │ Allows your bot to receive member events...        │
+   │                                                     │
+   │ MESSAGE CONTENT INTENT          ☑️ ON  ← ESSENCIAL!│
+   │ Allows your app to read message content...         │
+   │                                                     │
+   └────────────────────────────────────────────────────┘
+
+4. CLIQUE "SAVE CHANGES" (botão verde embaixo)
+
+5. RODE O BOT NOVAMENTE:
+   
+   Windows:  
+     ▶️ Duplo clique em iniciar.bat
+   
+   Ou via terminal:
+     python cuiudo.py
+
+═══════════════════════════════════════════════════════════════
+POR QUE ISSO É NECESSÁRIO?
+═══════════════════════════════════════════════════════════════
+
+Discord considera estas permissões "privilegiadas" porque permitem
+ao bot:
+
+- MESSAGE CONTENT INTENT → Ler o conteúdo das mensagens
+  (Sem isso, o bot vê que alguém enviou mensagem, mas não sabe
+   o que está escrito!)
+
+- SERVER MEMBERS INTENT → Saber quando membros entram/saem
+  (Para enviar boas-vindas automáticas)
+
+- PRESENCE INTENT → Ver status online/offline dos usuários
+  (Para saber se alguém está online)
+
+Você DEVE ativar pelo menos MESSAGE CONTENT INTENT, caso contrário
+o Cuiudo não consegue ler as mensagens!
+
+═══════════════════════════════════════════════════════════════
+CHECKLIST COMPLETO
+═══════════════════════════════════════════════════════════════
+
+✅ Token configurado no .env
+✅ Dependências instaladas (discord.py)
+⚠️  Intents AINDA NÃO ATIVADOS ← FAÇA ISSO AGORA!
+⬜ Bot rodando
+
+═══════════════════════════════════════════════════════════════
+
+Depois de ativar os Intents, volte e execute:
+
+    iniciar.bat
+
+Ou:
+
+    python cuiudo.py
+
+O bot deve conectar com sucesso!
+
+Bah tchê, só falta esse passo!
