@@ -22,12 +22,22 @@ from gerador_respostas import GeradorRespostas
 
 
 MARCADOR_BUSCA = re.compile(r'\[BUSCAR:\s*(.+?)\]', re.IGNORECASE)
+MARCADOR_LEMBRAR = re.compile(r'\[LEMBRAR:\s*([^|\]]+?)\s*\|\s*(.+?)\]', re.IGNORECASE)
 
 INSTRUCAO_BUSCA = """
 QUANDO NÃO SOUBER:
-Se te perguntarem um fato concreto que tu realmente não sabe (uma pessoa, lugar, acontecimento recente,
+Se te perguntarem um fato concreto que tu realmente não sabe (uma pessoa famosa, lugar, acontecimento recente,
 termo que nunca ouviu), responde SOMENTE com [BUSCAR: termo a pesquisar] e mais nada.
-Não usa isso pra opinião, conversa, convite ou coisa que tu sabe responder. Na dúvida, responde normal."""
+Não usa isso pra opinião, conversa, convite, nem pra gente do servidor (sobre o pessoal tu usa o que tá listado e o que lembra). Na dúvida, responde normal.
+
+O PESSOAL DO SERVIDOR:
+Tu enxerga quem tá no servidor (lista abaixo quando tiver). Pode falar deles, comentar quem tá online, quem sumiu,
+quem entrou faz pouco, chamar alguém pela conversa, puxar assunto com quem tá quieto. Trata todo mundo como conhecido da bodega.
+Não inventa fato sobre ninguém: só usa o que tá na lista, na conversa, ou nas lembranças. Não zomba de ninguém de forma pesada.
+
+LEMBRAR DAS PESSOAS:
+Quando alguém contar algo pessoal digno de guardar (de onde é, o que faz, o que gosta, time, família, apelido, um causo),
+acrescenta NO FINAL da resposta, em linha separada, [LEMBRAR: Nome | fato curto]. Pode ter mais de uma. Isso não aparece pra ninguém."""
 
 
 class HermesIntegration:
@@ -47,12 +57,13 @@ class HermesIntegration:
             print(f"📚 Memória carregada: {self.memoria.contar_aprendizados()} aprendizados")
 
     # ------------------------------------------------------------------ API
-    async def processar_mensagem_async(self, mensagem_usuario, usuario=None):
+    async def processar_mensagem_async(self, mensagem_usuario, usuario=None, contexto_servidor=None):
         """Versão assíncrona: não trava o bot enquanto o modelo pensa."""
-        return await asyncio.to_thread(self.processar_mensagem, mensagem_usuario, usuario)
+        return await asyncio.to_thread(self.processar_mensagem, mensagem_usuario, usuario, contexto_servidor)
 
-    def processar_mensagem(self, mensagem_usuario, usuario=None):
+    def processar_mensagem(self, mensagem_usuario, usuario=None, contexto_servidor=None):
         usuario = usuario or 'Alguém'
+        self._ctx_servidor = contexto_servidor or {}
 
         seguro, resposta_desvio = self.personalidade.filtrar_seguranca(mensagem_usuario)
         if not seguro:
@@ -81,6 +92,10 @@ class HermesIntegration:
                     resposta = self._chamar_hermes(contexto)
                     resposta = MARCADOR_BUSCA.sub('', resposta or '').strip() or None
 
+            # Guarda o que ele aprendeu sobre as pessoas e tira o marcador do texto
+            if resposta:
+                resposta = self._extrair_lembrancas(resposta)
+
         if not resposta:
             if self.verbose:
                 print("⚠️ Hermes indisponível, usando gerador de padrões")
@@ -89,9 +104,22 @@ class HermesIntegration:
         self._adicionar_historico(mensagem_usuario, resposta, usuario)
         return resposta
 
+    def _extrair_lembrancas(self, resposta):
+        for nome, fato in MARCADOR_LEMBRAR.findall(resposta):
+            nome, fato = nome.strip().lstrip('@'), fato.strip()
+            if nome and fato:
+                self.memoria.lembrar_pessoa(nome, fato)
+                if self.verbose:
+                    print(f"🧠 Lembrando: {nome} -> {fato}")
+        return MARCADOR_LEMBRAR.sub('', resposta).strip() or None
+
     # ------------------------------------------------------------ contexto
     def _montar_contexto(self, mensagem, usuario, info_nova=None):
         partes = [self.personalidade.SYSTEM_PROMPT, INSTRUCAO_BUSCA]
+
+        servidor = self._texto_servidor(mensagem, usuario)
+        if servidor:
+            partes.append(servidor)
 
         lembrancas = self._memoria_relevante(mensagem)
         if lembrancas:
@@ -119,6 +147,52 @@ class HermesIntegration:
 
         partes.append(f"\nAGORA {usuario} te mandou:\n{mensagem}\n\nBastião responde:")
         return "\n".join(partes)
+
+    def _texto_servidor(self, mensagem, usuario):
+        """Descreve o servidor, os membros e o que lembra de cada um."""
+        ctx = self._ctx_servidor
+        linhas = []
+        if ctx.get('servidor'):
+            canal = f", canal #{ctx['canal']}" if ctx.get('canal') else ""
+            linhas.append(f"\nSERVIDOR: \"{ctx['servidor']}\"{canal}, {ctx.get('total_membros', len(ctx.get('membros', [])))} pessoas.")
+
+        membros = ctx.get('membros', [])
+        nomes_membros = {m['nome'] for m in membros}
+        if membros:
+            linhas.append("QUEM TÁ NO SERVIDOR (nome - status - detalhes):")
+            for m in membros:
+                extras = []
+                if m.get('dono'):
+                    extras.append("dono do servidor")
+                if m.get('cargos'):
+                    extras.append("cargo: " + ", ".join(m['cargos']))
+                if m.get('fazendo'):
+                    extras.append("agora: " + m['fazendo'])
+                if m.get('entrou'):
+                    extras.append("entrou em " + m['entrou'])
+                linhas.append(f"- {m['nome']} - {m['status']}" + (" - " + "; ".join(extras) if extras else ""))
+
+        # Lembranças: do autor + de quem for citado na mensagem + de quem tá na lista
+        texto_lower = mensagem.lower()
+        citados = {usuario}
+        for nome in list(nomes_membros) + list(self.memoria.memoria.get('pessoas', {}).keys()):
+            if nome.lower() in texto_lower:
+                citados.add(nome)
+        lembr = []
+        for nome in citados:
+            p = self.memoria.buscar_pessoa(nome)
+            if p and p.get('informacoes'):
+                fatos = [i['info'] for i in p['informacoes'][-6:]]
+                lembr.append(f"- {nome}: " + "; ".join(fatos))
+        if lembr:
+            linhas.append("O QUE TU LEMBRA DESSAS PESSOAS:")
+            linhas.extend(lembr)
+
+        if ctx.get('conversa_recente'):
+            linhas.append("ÚLTIMAS MENSAGENS NO CANAL (antes da atual):")
+            linhas.extend(ctx['conversa_recente'])
+
+        return "\n".join(linhas) if linhas else ""
 
     def _memoria_relevante(self, mensagem):
         palavras = {p for p in re.findall(r'\w{4,}', mensagem.lower())}

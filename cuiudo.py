@@ -116,18 +116,27 @@ class Cuiudo(commands.Bot):
         """Processa e responde uma mensagem"""
         # Mostra que está digitando
         async with message.channel.typing():
-            # Remove menção do bot da mensagem
+            # Remove menção do bot e troca menções de outros por @nome
             conteudo = message.content
             if self.user.mentioned_in(message):
                 conteudo = conteudo.replace(f'<@{self.user.id}>', '').strip()
                 conteudo = conteudo.replace(f'<@!{self.user.id}>', '').strip()
+            for m in message.mentions:
+                if m != self.user:
+                    conteudo = conteudo.replace(f'<@{m.id}>', f'@{m.display_name}')
+                    conteudo = conteudo.replace(f'<@!{m.id}>', f'@{m.display_name}')
             
             if not conteudo:
                 conteudo = "Oi!"
             
+            # Contexto do servidor: quem tá por aí e o que andaram falando
+            contexto_servidor = await self._montar_contexto_servidor(message)
+            
             # Processa com Hermes
             nome_usuario = message.author.display_name
-            resposta = await self.hermes.processar_mensagem_async(conteudo, usuario=nome_usuario)
+            resposta = await self.hermes.processar_mensagem_async(
+                conteudo, usuario=nome_usuario, contexto_servidor=contexto_servidor
+            )
             
             # Envia resposta
             await message.reply(resposta, mention_author=False)
@@ -135,6 +144,60 @@ class Cuiudo(commands.Bot):
             if config.VERBOSE:
                 print(f"[{nome_usuario}]: {conteudo}")
                 print(f"[Cuiudo]: {resposta}")
+    
+    async def _montar_contexto_servidor(self, message):
+        """Coleta membros, status e conversa recente do canal para o Bastião 'enxergar' o pessoal"""
+        ctx = {'servidor': None, 'canal': None, 'membros': [], 'conversa_recente': []}
+        guild = message.guild
+        if guild is None:
+            return ctx
+        
+        ctx['servidor'] = guild.name
+        ctx['canal'] = getattr(message.channel, 'name', None)
+        
+        status_pt = {
+            discord.Status.online: 'online',
+            discord.Status.idle: 'ausente',
+            discord.Status.dnd: 'ocupado',
+            discord.Status.offline: 'offline',
+            discord.Status.invisible: 'offline',
+        }
+        
+        membros = [m for m in guild.members if not m.bot]
+        # Online primeiro, depois por nome
+        membros.sort(key=lambda m: (m.status == discord.Status.offline, m.display_name.lower()))
+        for m in membros[:60]:
+            cargos = [r.name for r in m.roles if r.name != '@everyone'][:3]
+            entrou = m.joined_at.strftime('%m/%Y') if m.joined_at else '?'
+            atividade = None
+            for a in m.activities:
+                if getattr(a, 'name', None):
+                    atividade = a.name
+                    break
+            ctx['membros'].append({
+                'nome': m.display_name,
+                'status': status_pt.get(m.status, 'offline'),
+                'cargos': cargos,
+                'entrou': entrou,
+                'fazendo': atividade,
+                'dono': m.id == guild.owner_id,
+            })
+        ctx['total_membros'] = len(membros)
+        
+        # Últimas mensagens do canal (pra saber quem tá falando o quê)
+        try:
+            async for msg in message.channel.history(limit=12, before=message):
+                if msg.author.bot and msg.author != self.user:
+                    continue
+                texto = msg.clean_content.strip()
+                if texto:
+                    autor = 'Bastião' if msg.author == self.user else msg.author.display_name
+                    ctx['conversa_recente'].append(f"{autor}: {texto[:200]}")
+            ctx['conversa_recente'].reverse()
+        except discord.Forbidden:
+            pass
+        
+        return ctx
     
     @tasks.loop(seconds=config.ACTIVITY_INTERVAL)
     async def rotacionar_atividade(self):
